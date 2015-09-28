@@ -4,16 +4,24 @@
 body {
   padding: 0;
   margin: 0;
-  font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;  
   font-size: 16px;
   line-height: 1.5;
-  color: #606c71; }
+  color: #606c71; 
+  
+  }
 
 a {
   color: #1e6bb8;
   text-decoration: none; }
   a:hover {
-    text-decoration: underline; }
+    text-decoration: none; }
+}
+
+.block{
+  background-color: #ffffff;
+
+}
 
 .btn {
   display: inline-block;
@@ -114,7 +122,8 @@ a {
   font-weight: normal;
   color: #159957; }
 .main-content p {
-  margin-bottom: 1em; }
+  margin-bottom: 1em; 
+  font-size: 0.9rem;}
 .main-content code {
   padding: 2px 4px;
   font-family: Consolas, "Liberation Mono", Menlo, Courier, monospace;
