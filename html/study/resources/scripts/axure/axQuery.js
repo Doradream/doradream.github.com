@@ -62,9 +62,9 @@
     };
 
     $ax.INPUT = function(id) { return id + "_input"; };
-    $ax.IsImageFocusable = function(type) { return type == 'imageBox' || type == 'buttonShape' || type == 'flowShape' || type == 'treeNodeObject' || type == 'tableCell'; };
-    $ax.IsTreeNodeObject = function(type) { return type == 'treeNodeObject'; };
-    $ax.IsSelectionButton = function(type) { return type == 'checkbox' || type == 'radioButton'; };
+    $ax.IsImageFocusable = function (type) { return $ax.public.fn.IsImageBox(type) || $ax.public.fn.IsVector(type) || $ax.public.fn.IsTreeNodeObject(type) || $ax.public.fn.IsTableCell(type); };
+    $ax.IsTreeNodeObject = function (type) { return $ax.public.fn.IsTreeNodeObject(type); };
+    $ax.IsSelectionButton = function (type) { return $ax.public.fn.IsCheckBox(type) || $ax.public.fn.IsRadioButton(type); };
 
     var _fn = {};
     $axure.fn = _fn;
@@ -118,7 +118,7 @@
     var _getFilterFnFromQuery = function(query) {
         var filter = function(diagramObject, elementId) {
             // Non diagram objects are allowed to be queryed, such as text inputs.
-            if(diagramObject && diagramObject.type != 'referenceDiagramObject' && !document.getElementById(elementId)) return false;
+            if (diagramObject && !$ax.public.fn.IsReferenceDiagramObject(diagramObject.type) && !document.getElementById(elementId)) return false;
             var retVal = true;
             for(var i = 0; i < query.filterFunctions.length && retVal; i++) {
                 retVal = query.filterFunctions[i](diagramObject, elementId);
@@ -178,7 +178,10 @@
         var parentIds = [];
 
         var getParent = function(elementId) {
-            var parent = undefined;
+            // Layer only references it if it is a direct layer to it
+            var parent = $ax.getLayerParentFromElementId(elementId);
+            if (parent) return parent;
+
             var scriptId = $ax.repeater.getScriptIdFromElementId(elementId);
             var itemNum = $ax.repeater.getItemIdFromElementId(elementId);
             var parentRepeater = $ax.getParentRepeaterFromScriptId(scriptId);
@@ -223,9 +226,11 @@
                 while(parent) {
                     parents[parents.length] = parent;
                     // If id is not a valid object, you are either repeater item
-                    if(!$obj(parent)) parent = $jobj(parent).parent().attr('id');
-                    // or dynamic panel state.
-                    if(!$obj(parent)) parent = $jobj(parent).parent().attr('id');
+                    if(!$obj(parent)) {
+                        parent = $jobj(parent).parent().attr('id');
+                        // or dynamic panel state.
+                        if (parent.indexOf('_container') != -1) parent = parent.split('_')[0];
+                    }
                     parent = getParent(parent);
                 }
                 parent = parents;
@@ -235,7 +240,7 @@
         return parentIds;
     };
 
-    // Get the path to the child, where non leaf nodes can be masters, dynamic panels, and repeaters.
+    // Get the path to the child, where non leaf nodes can be masters, layers, dynamic panels, and repeaters.
     $ax.public.fn.getChildren = function(deep) {
         var elementIds = this.getElementIds();
         var children = [];
@@ -244,15 +249,17 @@
             var obj = $obj(elementId);
             if(!obj) return undefined;
 
-            var isRepeater = obj.type == 'repeater';
-            var isDynamicPanel = obj.type == 'dynamicPanel';
-            var isMaster = obj.type == 'master';
+            var isRepeater = obj.type == $ax.constants.REPEATER_TYPE;
+            var isDynamicPanel = obj.type == $ax.constants.DYNAMIC_PANEL_TYPE;
+            var isLayer = obj.type == $ax.constants.LAYER_TYPE;
+            var isMaster = obj.type == $ax.constants.MASTER_TYPE;
             
-            var isMenu = obj.type == 'menuObject';
-            var isTreeNode = obj.type == 'treeNodeObject';
-            var isTable = obj.type == 'table';
+            var isMenu = obj.type == $ax.constants.MENU_OBJECT_TYPE;
+            var isTreeNode = obj.type == $ax.constants.TREE_NODE_OBJECT_TYPE;
+            var isTable = obj.type == $ax.constants.TABLE_TYPE;
+            var isCompoundVector = obj.type == $ax.constants.VECTOR_SHAPE_TYPE && obj.generateCompound;
 
-            if(isRepeater || isDynamicPanel || isMaster || isMenu || isTreeNode || isTable) {
+            if (isRepeater || isDynamicPanel || isLayer || isMaster || isMenu || isTreeNode || isTable || isCompoundVector) {
                 // Find parent that children should be pulled from. Default is just the elementId query (used by table and master)
                 var parent = $jobj(elementId);
                 if(isRepeater) {
@@ -273,7 +280,7 @@
                     for(var treeNodeIndex = 0; treeNodeIndex < treeNodeChildren.length; treeNodeIndex++) {
                         var treeNodeChild = $(treeNodeChildren[treeNodeIndex]);
                         var childObj = $obj(treeNodeChild.attr('id'));
-                        if(childObj && childObj.type == 'buttonShape') children = children.add(treeNodeChild);
+                        if (childObj && $ax.public.fn.IsVector(childObj.type)) children = children.add(treeNodeChild);
                     }
                 }
                 
@@ -283,7 +290,9 @@
                     var childObj = $(children[childIndex]);
                     var id = childObj.attr('id');
                     if(typeof(id) == 'undefined' && childObj.is('a')) id = $(childObj.children()[0]).attr('id');
-                        
+                    // Ignore annotations and any other children that are not elements
+                    if (id.split('_').length > 1) continue;
+
                     childrenIds.push(id);
                 }
                 

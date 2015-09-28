@@ -66,9 +66,11 @@
         });
 
         var lastFocusedClickable;
+        window.lastFocusedClickableSelector = 'div[tabIndex=0], img[tabIndex=0], a';
         var shouldOutline = true;
 
-        $ax(function(dObj) { return dObj.tabbable; }).each(function(dObj, elementId) {
+        $ax(function (dObj) { return dObj.tabbable; }).each(function (dObj, elementId) {
+            if ($ax.public.fn.IsLayer(dObj.type)) $ax.event.layerMapFocus(dObj, elementId);
             var focusableId = $ax.event.getFocusableWidgetOrChildId(elementId);
             $('#' + focusableId).attr("tabIndex", 0);
         });
@@ -81,7 +83,7 @@
             shouldOutline = true;
         });
 
-        $('div[tabIndex=0], img[tabIndex=0], a').focus(function() {
+        $(window.lastFocusedClickableSelector).focus(function () {
             if(shouldOutline) {
                 $(this).css('outline', '');
             } else {
@@ -91,7 +93,7 @@
             lastFocusedClickable = this;
         });
 
-        $('div[tabIndex=0], img[tabIndex=0], a').blur(function() {
+        $(window.lastFocusedClickableSelector).blur(function () {
             if(lastFocusedClickable == this) lastFocusedClickable = null;
         });
 
@@ -118,7 +120,7 @@
             });
 
             $ax(function(diagramObject) {
-                return diagramObject.type == 'dynamicPanel' && diagramObject.scrollbars != 'none';
+                return $ax.public.fn.IsDynamicPanel(diagramObject.type) && diagramObject.scrollbars != 'none';
             }).$().children().bind('touchstart', function() {
                 var target = this;
                 var top = target.scrollTop;
@@ -129,7 +131,7 @@
 
         if(OS_MAC && WEBKIT) {
             $ax(function(diagramObject) {
-                return diagramObject.type == 'comboBox';
+                return $ax.public.fn.IsComboBox(diagramObject.type);
             }).each(function(obj, id) {
                 $jobj($ax.INPUT(id)).css('-webkit-appearance', 'menulist-button').css('border-color', '#999999');
             });
@@ -143,7 +145,10 @@
         $ax.adaptive.initialize();
         $ax.loadDynamicPanelsAndMasters();
         $ax.adaptive.loadFinished();
+        var start = (new Date()).getTime();
         $ax.repeater.init();
+        var end = (new Date()).getTime();
+        console.log('loadTime: ' + (end - start) / 1000);
         $ax.style.prefetch();
 
         $(window).resize();

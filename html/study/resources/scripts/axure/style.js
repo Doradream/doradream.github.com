@@ -151,7 +151,9 @@
     };
 
     var _generateMouseState = function(id, mouseState, selected) {
-        if(selected) {
+        if (selected) {
+            if (_style.getElementImageOverride(id, SELECTED)) return SELECTED;
+
             var viewChain = $ax.adaptive.getAdaptiveIdChain($ax.adaptive.currentViewId);
             viewChain[viewChain.length] = '';
             var obj = $obj(id);
@@ -177,7 +179,9 @@
     };
 
     $ax.style.SetWidgetSelected = function(id, value, alwaysApply) {
-        if($ax.style.IsWidgetDisabled(id)) return;
+        if(_isWidgetDisabled(id)) return;
+        //NOTE: not firing select events if state didn't change
+        var raiseSelectedEvents = $ax.style.IsWidgetSelected(id) != value;
 
         if(value) {
             var group = $('#' + id).attr('selectiongroup');
@@ -192,7 +196,7 @@
 
         var obj = $obj(id);
         if(obj) {
-            if(obj.type == 'dynamicPanel') {
+            if ($ax.public.fn.IsDynamicPanel(obj.type) || $ax.public.fn.IsLayer(obj.type)) {
                 var children = $axure('#' + id).getChildren()[0].children;
                 for(var i = 0; i < children.length; i++) {
                     var childId = children[i];
@@ -221,6 +225,8 @@
 
         //    ApplyImageAndTextJson(id, value ? 'selected' : 'normal');
         _selectedWidgets[id] = value;
+
+        if(raiseSelectedEvents) $ax.event.raiseSelectedEvents(id, value);
     };
 
     var _generateSelectedState = function(id, selected) {
@@ -229,7 +235,7 @@
     };
 
     $ax.style.IsWidgetSelected = function(id) {
-        return Boolean(_selectedWidgets[id]);
+        return Boolean(_selectedWidgets[id]) || $('#'+id).hasClass('selected');
     };
 
     $ax.style.SetWidgetEnabled = function(id, value) {
@@ -249,19 +255,27 @@
         // Right now this is the only style on the widget. If other styles (ex. Rollover), are allowed
         //  on TextBox/TextArea, or Placeholder is applied to more widgets, this may need to do more.
         var obj = $jobj(inputId);
-        if(!value) {
+        if (!value) {
+            var height = document.getElementById(inputId).style['height'];
+            var width = document.getElementById(inputId).style['width'];
             obj.attr('style', '');
+            //removing all styles, but now we can change the size, so we should add them back
+            //this is more like a quick hack
+            if(height) obj.css('height', height);
+            if(width) obj.css('width', width);
+
             try { //ie8 and below error
                 if(password) document.getElementById(inputId).type = 'password';
             } catch(e) { }
         } else {
+            var element = $('#' + inputId)[0];
             var style = _computeAllOverrides(id, undefined, HINT, $ax.adaptive.currentViewId);
             var styleProperties = _getCssStyleProperties(style);
 
             //moved this out of GetCssStyleProperties for now because it was breaking un/rollovers with gradient fills
-            if(style.fill) styleProperties.runProps.backgroundColor = _getColorFromFill(style.fill);
+            if(style.fill) styleProperties.allProps.backgroundColor = _getColorFromFill(style.fill);
 
-            _applyCssProps($('#' + inputId)[0], styleProperties);
+            _applyCssProps(element, styleProperties, true);
             try { //ie8 and below error
                 if(password) document.getElementById(inputId).type = 'text';
             } catch(e) { }
@@ -274,9 +288,14 @@
     };
 
     var _elementIdsToImageOverrides = {};
-    $ax.style.mapElementIdToImageOverrides = function(elementId, override) {
-        _elementIdsToImageOverrides[elementId] = override;
+    $ax.style.mapElementIdToImageOverrides = function (elementId, override) {
+        for(var key in override) _addImageOverride(elementId, key, override[key]);
     };
+
+    var _addImageOverride = function (elementId, state, val) {
+        if (!_elementIdsToImageOverrides[elementId]) _elementIdsToImageOverrides[elementId] = {};
+        _elementIdsToImageOverrides[elementId][state] = val;
+    }
 
     $ax.style.deleteElementIdToImageOverride = function(elementId) {
         delete _elementIdsToImageOverrides[elementId];
@@ -299,7 +318,7 @@
     var HINT = 'hint';
 
     var _generateState = _style.generateState = function(id) {
-        return _style.IsWidgetDisabled(id) ? DISABLED : _generateSelectedState(id, _style.IsWidgetSelected(id));
+        return $ax.placeholderManager.isActive(id) ? HINT : _style.IsWidgetDisabled(id) ? DISABLED : _generateSelectedState(id, _style.IsWidgetSelected(id));
     };
 
     var _progressState = _style.progessState = function(state) {
@@ -374,7 +393,7 @@
             borderQuery.css('border-color', _rgbaToFunc(red, green, blue, alpha));
         }
 
-        var cornerRadiusTopLeft = computedStyle.cornerRadiusTopLeft || style.cornerRadiusTopLeft || defaultStyle.cornerRadiusTopLeft;
+        var cornerRadiusTopLeft = computedStyle.cornerRadius || style.cornerRadius || defaultStyle.cornerRadius;
         if(cornerRadiusTopLeft) {
             query.css('border-radius', cornerRadiusTopLeft + 'px');
             borderQuery.css('border-radius', cornerRadiusTopLeft + 'px');
@@ -408,14 +427,14 @@
 
     var _getButtonShapeId = function(id) {
         var obj = $obj(id);
-        return obj.type == 'treeNodeObject' ? $ax.getElementIdFromPath([obj.buttonShapeId], { relativeTo: id }) : id;
+        return $ax.public.fn.IsTreeNodeObject(obj.type) ? $ax.getElementIdFromPath([obj.buttonShapeId], { relativeTo: id }) : id;
     };
 
     var _getButtonShape = function(id) {
         var obj = $obj(id);
 
         // some treeNodeObjects don't have button shapes
-        return $jobj(obj.type == 'treeNodeObject' && obj.buttonShapeId ? $ax.getElementIdFromPath([obj.buttonShapeId], { relativeTo: id }) : id);
+        return $jobj($ax.public.fn.IsTreeNodeObject(obj.type) && obj.buttonShapeId ? $ax.getElementIdFromPath([obj.buttonShapeId], { relativeTo: id }) : id);
     };
 
     var _getTextIdFromShape = $ax.style.GetTextIdFromShape = function(id) {
@@ -431,8 +450,11 @@
         //return $jobj(id).parent().attr('id');
         var current = $jobj(id).parent();
         while(!current.is("body")) {
-            var id = current.attr('id');
-            if(id && id != 'base') return id;
+            var currentId = current.attr('id');
+            if(currentId && currentId != 'base') {
+                if(currentId.indexOf('_container') != -1) currentId = currentId.split('_')[0];
+                return currentId;
+            }
             current = current.parent();
         }
 
@@ -462,8 +484,27 @@
         if(!$.isEmptyObject(style)) {
             _applyTextStyle(textId, style);
         }
+
+        _updateStateClasses(id, event);
+        _updateStateClasses($ax.repeater.applySuffixToElementId(id, '_div'), event);
     };
 
+    var _updateStateClasses = function(id, event) {
+        var jobj = $jobj(id);
+
+        //if(jobj[0] && jobj[0].hasAttribute('widgetwidth')) {
+        //    for (var x = 0; x < jobj[0].children.length; x++) {
+        //        var childId = jobj[0].children[x].id;
+        //        if (childId.indexOf('p') < 0) continue;
+
+        //        _updateStateClasses(childId, event) ;
+        //    }
+        //} else {
+            for (var i = 0; i < ALL_STATES.length; i++) jobj.removeClass(ALL_STATES[i]);
+            if (event == 'mouseDown') jobj.addClass('mouseOver');
+            jobj.addClass(event);
+        //}
+    }
 
     /* -------------------
 
@@ -504,6 +545,7 @@
 
     var _computeAllOverrides = $ax.style.computeAllOverrides = function(id, parentId, state, currentViewId) {
         var computedStyle = {};
+        if(parentId) computedStyle = _computeAllOverrides(parentId, null, state, currentViewId);
 
         var diagramObject = $ax.getObjectFromElementId(id);
         var viewIdChain = $ax.adaptive.getAdaptiveIdChain(currentViewId);
@@ -529,13 +571,8 @@
             }
         }
 
-        var isHyperlink = Boolean(parentId);
         var currState = NORMAL;
         while(currState) {
-            if(isHyperlink && (currState == MOUSE_DOWN || currState == MOUSE_OVER)) {
-                var key = currState == MOUSE_OVER ? 'hyperlinkMouseOver' : 'hyperlinkMouseDown';
-                $.extend(computedStyle, $ax.document.stylesheet.defaultStyles[key]);
-            }
             $.extend(computedStyle, _computeStateStyleForViewChain(diagramObject, currState, viewIdChain, true));
             currState = _unprogressState(currState, state);
         }
@@ -574,7 +611,7 @@
 
     var _removeUnsupportedProperties = function(style, objectType) {
         // for now all we need to do is remove padding from checkboxes and radio buttons
-        if(objectType == 'radioButton' || objectType == 'checkbox') {
+        if ($ax.public.fn.IsRadioButton(objectType) || $ax.public.fn.IsCheckBox(objectType)) {
             style.paddingTop = 0;
             style.paddingLeft = 0;
             style.paddingRight = 0;
@@ -618,7 +655,7 @@
 
     $ax.style.initializeObjectTextAlignment = function(query) {
         query.filter(function(diagramObject) {
-            return diagramObject.type == 'buttonShape' || diagramObject.type == 'flowShape' || diagramObject.type == 'imageBox';
+            return $ax.public.fn.IsVector(diagramObject.type) || $ax.public.fn.IsImageBox(diagramObject.type);
         }).each(function(diagramObject, elementId) {
             if($jobj(elementId).length == 0) return;
             _initTextAlignment(elementId);
@@ -637,35 +674,60 @@
     };
 
     var ALL_STATES = ['mouseOver', 'mouseDown', 'selected', 'disabled'];
-    var _applyImage = $ax.style.applyImage = function(id, imgUrl, state) {
-        var imgQuery = $jobj($ax.style.GetImageIdFromShape(id));
-        var idQuery = $jobj(id);
+    var _applyImage = $ax.style.applyImage = function (id, imgUrl, state) {
 
-        var _updateClass = function() {
-            for(var i = 0; i < ALL_STATES.length; i++) {
+        //if (diagramObject.generateCompound) {
+        //    imgUrl = _matchImage(elementId, images, viewIdChain, state);
+        //    var intercept = imgUrl.lastIndexOf(".");
+        //    var imgUrlHead = imgUrl.substring(0, intercept);
+        //    var imgUrlTail = imgUrl.substring(intercept);
+
+        //    for (var i = 0; i < diagramObject.compoundChildren.length; i++) {
+        //        if (imgUrl) $ax.style.applyImage(elementId + diagramObject.compoundChildren[0], imgUrlHead + diagramObject.compoundChildren[0] + imgUrlTail, state);
+        //    }
+        //} else
+
+        var idQuery = $jobj(id);
+        if($ax.public.fn.isCompoundVectorHtml(idQuery[0])) {
+            var imageChildren = idQuery.find('img');
+            var intercept = imgUrl.lastIndexOf(".");
+            var imgUrlHead = imgUrl.substring(0, intercept);
+            var imgUrlTail = imgUrl.substring(intercept);
+
+            for (var j = 0; j < imageChildren.length; j++) {
+                var imageTag = imageChildren[j].id;
+                var pos = imageTag.lastIndexOf("_img");
+                var imgChildUrl = imgUrlHead + imageTag.substring(id.length, pos) + imgUrlTail;
+                var childQuery = $jobj(imageTag);
+                childQuery.attr('src', imgChildUrl);
+
+                var childImgQuery = $jobj(imageTag);
+                for (var i = 0; i < ALL_STATES.length; i++) {
+                    childImgQuery.removeClass(ALL_STATES[i]);
+                }
+                if (state != 'normal') {
+                    childImgQuery.addClass(state);
+                }
+
+
+            }
+
+        } else {
+            var imgQuery = $jobj($ax.style.GetImageIdFromShape(id));
+
+            //it is hard to tell if setting the image or the class first causing less flashing when adding shadows.
+            imgQuery.attr('src', imgUrl);
+            for (var i = 0; i < ALL_STATES.length; i++) {
                 idQuery.removeClass(ALL_STATES[i]);
                 imgQuery.removeClass(ALL_STATES[i]);
             }
-            if(state != 'normal') {
+            if (state != 'normal') {
                 idQuery.addClass(state);
                 imgQuery.addClass(state);
             }
-        };
-
-        if(imgQuery.attr('src') != imgUrl) {
-            imgQuery[0].onload = function() {
-                _updateClass();
-                // IE 8 can't set onload to undefined
-                if(IE && BROWSER_VERSION <= 8) imgQuery[0].onload = function() { };
-                else imgQuery[0].onload = undefined;
-            };
-        } else {
-            _updateClass();
+            if (imgQuery.parents('a.basiclink').length > 0) imgQuery.css('border', 'none');
+            if (imgUrl.indexOf(".png") > -1) $ax.utils.fixPng(imgQuery[0]);
         }
-
-        imgQuery.attr('src', imgUrl);
-        if(imgQuery.parents('a.basiclink').length > 0) imgQuery.css('border', 'none');
-        if(imgUrl.indexOf(".png") > -1) $ax.utils.fixPng(imgQuery[0]);
     };
 
     var _resetTextJson = function(id, textid) {
@@ -748,8 +810,12 @@
 
         var textObj = $jobj(textId);
         var textHeight = _getRtfElementHeight(textObj[0]);
-        var textObjParent = textObj.parent();
-        var containerHeight = textObjParent.height();
+        var textObjParent = textObj.offsetParent();
+        var parentId = $ax.visibility.getWidgetFromContainer(textObjParent.attr('id'));
+        textObjParent = $jobj(parentId);
+        var isCompoundVector = textObjParent[0].hasAttribute('widgetHeight');
+        var widgetHeight = $ax.public.fn.getWidgetBoundingRect(textObjParent[0].id).height;
+        var containerHeight = isCompoundVector ? widgetHeight : textObjParent.height();
 
         var newTop = 0;
         if(vAlign == "middle") {
@@ -761,9 +827,14 @@
         }
 
         var oldTop = $jobj(textId).css('top').replace('px', '');
+        if (isCompoundVector) {
+            newTop = $ax.public.fn.getWidgetBoundingRect(textObjParent[0].id).centerPoint.y -
+                (widgetHeight * 0.5) + newTop;
+        }
+
         if(oldTop != newTop) {
             textObj.css('top', newTop + 'px');
-            _updateTransformOrigin(textId);
+            if (!isCompoundVector) _updateTransformOrigin(textId);
         }
     };
 
@@ -774,7 +845,7 @@
                     textObj.css('-ms-transform-origin') ||
                         textObj.css('transform-origin');
         if(transformOrigin) {
-            var textObjParent = textObj.parent();
+            var textObjParent = $ax('#' + textObj.parent().attr('id'));
             var newX = (textObjParent.width() / 2 - textObj.css('left').replace('px', ''));
             var newY = (textObjParent.height() / 2 - textObj.css('top').replace('px', ''));
             var newOrigin = newX + 'px ' + newY + 'px';
@@ -813,6 +884,8 @@
         var textId = $ax.style.GetTextIdFromShape(shapeId);
         if(textId) _applyTextStyle(textId, style);
 
+        $ax.placeholderManager.refreshPlaceholder(shapeId);
+
         // removing this for now
         //        if(style.location) {
         //            $jobj(shapeId).css('top', style.location.x + "px")
@@ -838,14 +911,19 @@
         });
     };
 
-    var _applyCssProps = function(element, styleProperties) {
-        var nodeName = element.nodeName.toLowerCase();
-        if(nodeName == 'p') {
-            var parProps = styleProperties.parProps;
-            for(var prop in parProps) element.style[prop] = parProps[prop];
-        } else if(nodeName != 'a') {
-            var runProps = styleProperties.runProps;
-            for(prop in runProps) element.style[prop] = runProps[prop];
+    var _applyCssProps = function(element, styleProperties, applyAllStyle) {
+        if(applyAllStyle) {
+            var allProps = styleProperties.allProps;
+            for(var prop in allProps) element.style[prop] = allProps[prop];
+        } else {
+            var nodeName = element.nodeName.toLowerCase();
+            if(nodeName == 'p') {
+                var parProps = styleProperties.parProps;
+                for(prop in parProps) element.style[prop] = parProps[prop];
+            } else if(nodeName != 'a') {
+                var runProps = styleProperties.runProps;
+                for(prop in runProps) element.style[prop] = runProps[prop];
+            }
         }
     };
 
@@ -858,27 +936,37 @@
         var toApply = {};
         toApply.runProps = {};
         toApply.parProps = {};
+        toApply.allProps = {};
 
-        if(style.fontName) toApply.runProps.fontFamily = style.fontName;
+        if(style.fontName) toApply.allProps.fontFamily = toApply.runProps.fontFamily = style.fontName;
         // we need to set font size on both runs and pars because otherwise it well mess up the measure and thereby vertical alignment
-        if(style.fontSize) toApply.runProps.fontSize = toApply.parProps.fontSize = style.fontSize;
-        if(style.fontWeight !== undefined) toApply.runProps.fontWeight = style.fontWeight;
-        if(style.fontStyle !== undefined) toApply.runProps.fontStyle = style.fontStyle;
-        if(style.underline !== undefined) toApply.runProps.textDecoration = style.underline ? 'underline' : 'none';
+        if(style.fontSize) toApply.allProps.fontSize = toApply.runProps.fontSize = toApply.parProps.fontSize = style.fontSize;
+        if(style.fontWeight !== undefined) toApply.allProps.fontWeight = toApply.runProps.fontWeight = style.fontWeight;
+        if(style.fontStyle !== undefined) toApply.allProps.fontStyle = toApply.runProps.fontStyle = style.fontStyle;
+        if(style.underline !== undefined) toApply.allProps.textDecoration = toApply.runProps.textDecoration = style.underline ? 'underline' : 'none';
         if(style.foreGroundFill) {
-            toApply.runProps.color = _getColorFromFill(style.foreGroundFill);
-            if(style.foreGroundFill.opacity) toApply.runProps.opacity = style.foreGroundFill.opacity;
+            toApply.allProps.color = toApply.runProps.color = _getColorFromFill(style.foreGroundFill);
+            //if(style.foreGroundFill.opacity) toApply.allProps.opacity = toApply.runProps.opacity = style.foreGroundFill.opacity;
         }
-        if(style.horizontalAlignment) toApply.parProps.textAlign = style.horizontalAlignment;
-        if(style.lineSpacing) toApply.parProps.lineHeight = style.lineSpacing;
-        if(style.textShadow) toApply.parProps.textShadow = _getCssShadow(style.textShadow);
+        if(style.horizontalAlignment) toApply.allProps.textAlign = toApply.parProps.textAlign = toApply.runProps.textAlign = style.horizontalAlignment;
+        if(style.lineSpacing) toApply.allProps.lineHeight = toApply.parProps.lineHeight = style.lineSpacing;
+        if(style.textShadow) toApply.allProps.textShadow = toApply.parProps.textShadow = _getCssShadow(style.textShadow);
 
         return toApply;
     };
 
     var _getColorFromFill = function(fill) {
-        var fillString = '00000' + fill.color.toString(16);
-        return '#' + fillString.substring(fillString.length - 6);
+        //var fillString = '00000' + fill.color.toString(16);
+        //return '#' + fillString.substring(fillString.length - 6);
+        var val = fill.color;
+        var color = {};
+        color.b = val % 256;
+        val = Math.floor(val / 256);
+        color.g = val % 256;
+        val = Math.floor(val / 256);
+        color.r = val % 256;
+        color.a = fill.opacity || 1;
+        return _getCssColor(color);
     };
 
     var _getCssColor = function(rgbaObj) {
@@ -978,9 +1066,18 @@
         var image = new Image();
         for(var i = 0; i < scriptIds.length; i++) {
             var obj = $obj(scriptIds[i]);
-            if(obj.type != 'imageBox') continue;
+            if (!$ax.public.fn.IsImageBox(obj.type)) continue;
             var images = obj.images;
-            for(var key in images) image.src = images[key];
+            for (var key in images) image.src = images[key];
+
+            var imageOverrides = obj.imageOverrides;
+            for(var elementId in imageOverrides) {
+                var override = imageOverrides[elementId];
+                for (var state in override) {
+                    _addImageOverride(elementId, state, override[state]);
+                    image.src = override[state];
+                }
+            }
         }
     };
 });

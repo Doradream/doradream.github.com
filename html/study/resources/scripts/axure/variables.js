@@ -110,7 +110,7 @@ $axure.internal(function($ax) {
         for(var i = 0; i < definedVariables.length; i++) {
             var key = definedVariables[i];
             var val = getVariableValue(key, undefined, true);
-            if(val != null && val.length > 0) {
+            if(val != null) { 
                 if(toAdd.length > 0) toAdd += '&';
                 toAdd += key + '=' + encodeURIComponent(val);
             }

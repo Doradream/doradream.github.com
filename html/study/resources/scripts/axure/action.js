@@ -2,33 +2,123 @@
     var _actionHandlers = {};
     var _action = $ax.action = {};
 
+    var queueTypes = _action.queueTypes = {
+        move: 1,
+        setState: 2,
+        fade: 3,
+        resize: 4,
+        rotate: 5
+    };
+
     var animationQueue = {};
-    var getAnimation = function(id) {
-        return animationQueue[id] && animationQueue[id][0];
+
+    // using array as the key doesn't play nice
+    var nextAnimationId = 1;
+    var animationsToCount = {};
+    var actionToActionGroups = {};
+    var getAnimation = function(id, type) {
+        return animationQueue[id] && animationQueue[id][type] && animationQueue[id][type][0];
     };
 
-    var _addAnimation = _action.addAnimation = function(id, func) {
-        var wasEmpty = !getAnimation(id);
+    var _addAnimation = _action.addAnimation = function (id, type, func, suppressFire) {
 
+        var wasEmpty = !getAnimation(id, type);
         // Add the func to the queue. Create the queue if necessary.
-        var queue = animationQueue[id];
-        if(!queue) {
-            animationQueue[id] = queue = [];
-        }
-        queue[queue.length] = func;
+        var idQueue = animationQueue[id];
+        if(!idQueue) animationQueue[id] = idQueue = {};
 
+        var queue = idQueue[type];
+        if(!queue) idQueue[type] = queue = [];
+
+        queue[queue.length] = func;
         // If it was empty, there isn't a callback waiting to be called on this. You have to fire it manually.
-        if(wasEmpty) func();
+        // If this is waiting on something, suppress it, and it will fire when it's ready
+        if(wasEmpty && !suppressFire) func();
     };
 
-    var _fireAnimationFromQueue = _action.fireAnimationFromQueue = function(id) {
+    var _addAnimations = function (animations) {
+        if(animations.length == 1) {
+            _addAnimation(animations[0].id, animations[0].type, animations[0].func);
+            return;
+        }
+        var allReady = true;
+        var readyCount = 0;
+        for(var i = 0; i < animations.length; i++) {
+            var animation = animations[i];
+            var thisReady = !getAnimation(animation.id, animation.type);
+            allReady = allReady && thisReady;
+            if (thisReady) readyCount++;
+            else {
+                var typeToGroups = actionToActionGroups[animation.id];
+                if (!typeToGroups) actionToActionGroups[animation.id] = typeToGroups = {};
+
+                var groups = typeToGroups[animation.type];
+                if (!groups) typeToGroups[animation.type] = groups = [];
+
+                groups[groups.length] = animations;
+            }
+        }
+
+        for(i = 0; i < animations.length; i++) {
+            animation = animations[i];
+            _addAnimation(animation.id, animation.type, animation.func, true);
+        }
+
+        if (allReady) {
+            for (i = 0; i < animations.length; i++) animations[i].func();
+        } else {
+            animations.id = nextAnimationId++;
+            animationsToCount[animations.id] = readyCount;
+        }
+    }
+
+    var _fireAnimationFromQueue = _action.fireAnimationFromQueue = function (id, type) {
         // Remove the function that was just fired
-        if(animationQueue[id]) $ax.splice(animationQueue[id], 0, 1);
+        if (animationQueue[id] && animationQueue[id][type]) $ax.splice(animationQueue[id][type], 0, 1);
 
         // Fire the next func if there is one
-        var func = getAnimation(id);
-        if(func) func();
+        var func = getAnimation(id, type);
+        if(func && !_checkFireActionGroup(id, type, func)) func();
     };
+
+    var _checkFireActionGroup = function(id, type, func) {
+        var group = actionToActionGroups[id];
+        group = group && group[type];
+        if (!group || group.length == 0) return false;
+
+        var animations = group[0];
+        var found = false;
+        for (var i = 0; i < animations.length; i++) {
+            var animation = animations[i];
+            if (animation.id == id && animation.type == type) {
+                found = func == animation.func;
+                break;
+            }
+        }
+
+        // if found then update this action group, otherwise, keep waiting for right action to fire
+        if(!found) return false;
+        $ax.splice(group, 0, 1);
+        var count = animationsToCount[animations.id] + 1;
+        if(count != animations.length) {
+            animationsToCount[animations.id] = count;
+            return true;
+        }
+        delete animationsToCount[animations.id];
+
+        // Funcs is needed because an earlier func can try to cascade right away (when no animation for example) and will kill this func and move on to the
+        //  next one (which may not even exist). If we get all funcs before calling any, then we know they are all the func we want.
+        var funcs = [];
+        for(i = 0; i < animations.length; i++) {
+            animation = animations[i];
+            funcs.push(getAnimation(animation.id, animation.type));
+        }
+        for(i = 0; i < funcs.length; i++) {
+            funcs[i]();
+        }
+
+        return true;
+    }
 
     var _refreshing = [];
     _action.refreshStart = function(repeaterId) { _refreshing.push(repeaterId); };
@@ -85,6 +175,13 @@
         linkActionHelper(eventInfo, actions, index);
     };
 
+    _actionHandlers.setAdaptiveView = function(eventInfo, actions, index) {
+        var action = actions[index];
+        var view = action.setAdaptiveViewTo;
+
+        if(view) $ax.adaptive.setAdaptiveView(view);
+    };
+
     var linkActionHelper = function(eventInfo, actions, index) {
         var action = actions[index];
         eventInfo.link = true;
@@ -131,8 +228,8 @@
             var literal = target.urlLiteral;
             var sto = literal.stos[0];
             if(literal.exprType == 'stringLiteral' && literal.value.indexOf('[[') == 0 && literal.value.indexOf(']]' == literal.value.length - 2) && literal.stos.length == 1 && sto.sto == 'item' && eventInfo.item) {
-                var data = $ax.repeater.getData(eventInfo.item.repeater.elementId, eventInfo.item.index, sto.name, 'data');
-                if(data && data.type == 'page') return true;
+                var data = $ax.repeater.getData(eventInfo, eventInfo.item.repeater.elementId, eventInfo.item.index, sto.name, 'data');
+                if (data && $ax.public.fn.IsPage(data.type)) return true;
             }
         }
         return false;
@@ -167,7 +264,7 @@
                 var elementId = elementIds[j];
                 // Need new scope for elementId and info
                 (function(elementId, stateInfo) {
-                    _addAnimation(elementId, function() {
+                    _addAnimation(elementId, queueTypes.setState, function() {
                         var stateNumber = stateInfo.stateNumber;
                         if(stateInfo.setStateType == "value") {
                             var oldTarget = eventInfo.targetElement;
@@ -192,7 +289,7 @@
 
                                 // Make sure number is not NaN, is in range, and is a whole number.
                                 // Wasn't a state name or number, so return
-                                if(isNaN(stateNumber) || stateNumber <= 0 || stateNumber > panelCount || Math.round(stateNumber) != stateNumber) return $ax.action.fireAnimationFromQueue(elementId);
+                                if(isNaN(stateNumber) || stateNumber <= 0 || stateNumber > panelCount || Math.round(stateNumber) != stateNumber) return _fireAnimationFromQueue(elementId, queueTypes.setState);
                             }
                         } else if(stateInfo.setStateType == 'next' || stateInfo.setStateType == 'previous') {
                             var info = $ax.deepCopy(stateInfo);
@@ -200,12 +297,12 @@
 
                             // Only map it, if repeat exists.
                             if(typeof (repeat) == 'number') _repeatPanelMap[elementId] = info;
-                            return _progessPanelState(elementId, info);
+                            return _progessPanelState(elementId, info, info.repeatSkipFirst);
                         }
                         delete _repeatPanelMap[elementId];
 
                         // If setting to current (to stop repeat) break here
-                        if(stateInfo.setStateType == 'current') return $ax.action.fireAnimationFromQueue(elementId);
+                        if(stateInfo.setStateType == 'current') return _fireAnimationFromQueue(elementId, queueTypes.setState);
 
                         $ax('#' + elementId).SetPanelState(stateNumber, stateInfo.options, stateInfo.showWhenSet);
                     });
@@ -216,7 +313,7 @@
         _dispatchAction(eventInfo, actions, index + 1);
     };
 
-    var _progessPanelState = function(id, info) {
+    var _progessPanelState = function(id, info, skipFirst) {
         var direction = info.setStateType;
         var loop = info.loop;
         var repeat = info.repeat;
@@ -230,25 +327,29 @@
             var currentStateNumber = Number(currentStateId.substr(currentStateId.indexOf('state') + 5));
             if(direction == "next") {
                 stateNumber = currentStateNumber + 2;
-                if(stateNumber > $('#' + id).children().length) {
+
+                if(stateNumber > $ax.visibility.GetPanelStateCount(id)) {
                     if(loop) stateNumber = 1;
                     else {
                         delete _repeatPanelMap[id];
-                        return $ax.action.fireAnimationFromQueue(id);
+                        return _fireAnimationFromQueue(id, queueTypes.setState);
                     }
                 }
             } else if(direction == "previous") {
                 stateNumber = currentStateNumber;
                 if(stateNumber <= 0) {
-                    if(loop) stateNumber = $('#' + id).children().length;
+                    if(loop) stateNumber = $ax.visibility.GetPanelStateCount(id);
                     else {
                         delete _repeatPanelMap[id];
-                        return $ax.action.fireAnimationFromQueue(id);
+                        return _fireAnimationFromQueue(id, queueTypes.setState);
                     }
                 }
             }
 
-            $ax('#' + id).SetPanelState(stateNumber, options, info.showWhenSet);
+            if(hasRepeat && _repeatPanelMap[id] != info) return _fireAnimationFromQueue(id, queueTypes.setState);
+
+            if (!skipFirst) $ax('#' + id).SetPanelState(stateNumber, options, info.showWhenSet);
+            else _fireAnimationFromQueue(id, queueTypes.setState);
 
             if(hasRepeat) {
                 var animate = options && options.animateIn;
@@ -259,8 +360,8 @@
                 window.setTimeout(function() {
                     // Either new repeat, or no repeat anymore.
                     if(_repeatPanelMap[id] != info) return;
-                    _addAnimation(id, function() {
-                        _progessPanelState(id, info);
+                    _addAnimation(id, queueTypes.setState, function() {
+                        _progessPanelState(id, info, false);
                     });
                 }, repeat);
             } else delete _repeatPanelMap[id];
@@ -278,7 +379,7 @@
                 var elementId = elementIds[j];
                 // Need new scope for elementId and info
                 (function(elementId, fadeInfo) {
-                    _addAnimation(elementId, function() {
+                    _addAnimation(elementId, queueTypes.fade, function() {
                         if(fadeInfo.fadeType == "hide") {
                             $ax('#' + elementId).hide(fadeInfo.options);
                         } else if(fadeInfo.fadeType == "show") {
@@ -302,129 +403,498 @@
 
             for(var j = 0; j < elementIds.length; j++) {
                 var elementId = elementIds[j];
-                // Need new scope for elementId and info
-                (function(elementId, moveInfo) {
-                    var oldTarget = eventInfo.targetElement;
-                    eventInfo.targetElement = elementId;
-                    var xValue = $ax.expr.evaluateExpr(moveInfo.xValue, eventInfo);
-                    var yValue = $ax.expr.evaluateExpr(moveInfo.yValue, eventInfo);
-                    eventInfo.targetElement = oldTarget;
+                _queueMove(eventInfo, elementId, moveInfo);
+            }
+        }
+        _dispatchAction(eventInfo, actions, index + 1);
+    };
 
-                    var widgetDragInfo = eventInfo.dragInfo;
-                    _addAnimation(elementId, function() {
-                        if(moveInfo.moveType == "location") {
-                            $ax('#' + elementId).moveTo(xValue, yValue, moveInfo.options);
-                        } else if(moveInfo.moveType == "delta") {
-                            $ax('#' + elementId).moveBy(xValue, yValue, moveInfo.options);
-                        } else if(moveInfo.moveType == "drag") {
-                            $ax('#' + elementId).moveBy(widgetDragInfo.xDelta, widgetDragInfo.yDelta, moveInfo.options);
-                        } else if(moveInfo.moveType == "dragX") {
-                            $ax('#' + elementId).moveBy(widgetDragInfo.xDelta, 0, moveInfo.options);
-                        } else if(moveInfo.moveType == "dragY") {
-                            $ax('#' + elementId).moveBy(0, widgetDragInfo.yDelta, moveInfo.options);
-                        } else if(moveInfo.moveType == "locationBeforeDrag") {
-                            var loc = widgetDragInfo.movedWidgets[elementId];
-                            if(loc) $ax('#' + elementId).moveTo(loc.x, loc.y, moveInfo.options);
-                            else _fireAnimationFromQueue(elementId);
-                        } else if(moveInfo.moveType == "withThis") {
-                            var widgetMoveInfo = $ax.move.GetWidgetMoveInfo();
-                            var srcElementId = $ax.getElementIdsFromEventAndScriptId(eventInfo, eventInfo.srcElement)[0];
-                            var delta = widgetMoveInfo[srcElementId];
-                            $ax('#' + elementId).moveBy(delta.x, delta.y, delta.options);
+    var _compoundChildrenShallow = function (id) {
+        var deep = [];
+        var children = $ax('#' + id).getChildren()[0].children;
+        var piecePrefix = id + 'p';
+
+        for (var i = 0; i < children.length; i++) {
+            if(children[i].substring(0, id.length + 1) == piecePrefix) {
+                deep.push(children[i]);
+            }
+        }
+        return deep;
+    };
+
+    var _queueMove = function(eventInfo, elementId, moveInfo) {
+        var eventInfoCopy = $ax.eventCopy(eventInfo);
+        eventInfoCopy.targetElement = elementId;
+
+        if($ax.public.fn.IsLayer($obj(elementId).type)) {
+            var childrenIds = $ax.public.fn.getLayerChildrenDeep(elementId, true);
+            if(childrenIds.length == 0) return;
+
+            var animations = [];
+            var deltaLoc;
+
+            // Get move delta once, then apply to all children
+            animations.push({
+                id: elementId,
+                type: queueTypes.move,
+                func: function() {
+                    var layerInfo = $ax.public.fn.getWidgetBoundingRect(elementId);
+                    deltaLoc = _getMoveLoc(moveInfo, eventInfoCopy, layerInfo);
+                    _fireAnimationFromQueue(elementId, queueTypes.move);
+                    $ax.event.raiseSyntheticEvent(elementId, "onMove");
+                }
+            });
+
+            for(var i = 0; i < childrenIds.length; i++) {
+                (function(childId) {
+                    animations.push({
+                        id: childId,
+                        type: queueTypes.move,
+                        func: function () {
+                            if($ax.public.fn.IsLayer($obj(childId).type)) {
+                                _fireAnimationFromQueue(childId, queueTypes.move);
+                                $ax.event.raiseSyntheticEvent(childId, "onMove");
+                            } else $ax('#' + childId).moveBy(deltaLoc.x, deltaLoc.y, moveInfo.options);
                         }
                     });
-                })(elementId, moveInfo);
+                })(childrenIds[i]);
+            }
+            _addAnimations(animations);
+        } else {
+            _addAnimation(elementId, queueTypes.move, function() {
+                var loc = _getMoveLoc(moveInfo, eventInfoCopy);
+
+                if(loc.moveTo) $ax('#' + elementId).moveTo(loc.x, loc.y, moveInfo.options);
+                else $ax('#' + elementId).moveBy(loc.x, loc.y, moveInfo.options);
+            });
+        }
+    };
+
+    var _getMoveLoc = function(moveInfo, eventInfoCopy, layerInfo) {
+        var moveTo = false;
+        var xValue = 0;
+        var yValue = 0;
+        var widgetDragInfo = eventInfoCopy.dragInfo;
+        switch(moveInfo.moveType) {
+        case "location":
+            xValue = $ax.expr.evaluateExpr(moveInfo.xValue, eventInfoCopy);
+            yValue = $ax.expr.evaluateExpr(moveInfo.yValue, eventInfoCopy);
+            if(layerInfo) { //if it's layer, use moveby so we can mantain the group shape
+                xValue = xValue - layerInfo.left;
+                yValue = yValue - layerInfo.top;
+            } else moveTo = true;
+            break;
+        case "delta":
+            xValue = $ax.expr.evaluateExpr(moveInfo.xValue, eventInfoCopy);
+            yValue = $ax.expr.evaluateExpr(moveInfo.yValue, eventInfoCopy);
+            break;
+        case "drag":
+            xValue = widgetDragInfo.xDelta;
+            yValue = widgetDragInfo.yDelta;
+            break;
+        case "dragX":
+            xValue = widgetDragInfo.xDelta;
+            yValue = 0;
+            break;
+        case "dragY":
+            xValue = 0;
+            yValue = widgetDragInfo.yDelta;
+            break;
+        case "locationBeforeDrag":
+            var location = widgetDragInfo.movedWidgets[elementId];
+            if(location) {
+                xValue = location.x;
+                yValue = location.y;
+            } else {
+                _fireAnimationFromQueue(elementId, queueTypes.move);
+                return undefined;
+            }
+            moveTo = true;
+            break;
+        case "withThis":
+            var widgetMoveInfo = $ax.move.GetWidgetMoveInfo();
+            var srcElementId = $ax.getElementIdsFromEventAndScriptId(eventInfoCopy, eventInfoCopy.srcElement)[0];
+            var delta = widgetMoveInfo[srcElementId];
+            xValue = delta.x;
+            yValue = delta.y;
+            break;
+        }
+
+        var options = moveInfo.options;
+        if(options && options.boundaryExpr) {
+            //check if new position is within boundaries, if not use sto to calculate the correct location
+            if(!$ax.expr.evaluateExpr(options.boundaryExpr, eventInfoCopy)) {
+                var boundaryStoInfo = options.boundaryStos;
+                if(boundaryStoInfo) {
+                    var jobj = $jobj(eventInfoCopy.targetElement);
+                    if(boundaryStoInfo.ySto) {
+                        var currentTop = layerInfo ? layerInfo.top : Number(jobj.css('top').replace('px', ''));
+                        var newTop = $ax.evaluateSTO(boundaryStoInfo.ySto, boundaryStoInfo.boundaryScope, eventInfoCopy);
+                        if(moveTo) yValue = newTop;
+                        else yValue = newTop - currentTop;
+                    }
+
+                    if(boundaryStoInfo.xSto) {
+                        var currentLeft = layerInfo ? layerInfo.left : Number(jobj.css('left').replace('px', ''));
+                        var newLeft = $ax.evaluateSTO(boundaryStoInfo.xSto, boundaryStoInfo.boundaryScope, eventInfoCopy);
+                        if(moveTo) xValue = newLeft;
+                        else xValue = newLeft - currentLeft;
+                    }
+                }
+            }
+        }
+
+        return { x: xValue, y: yValue, moveTo: moveTo };
+    };
+
+    _actionHandlers.rotateWidget = function(eventInfo, actions, index) {
+        var action = actions[index];
+        var widgetRotationFilter = [
+            $ax.constants.IMAGE_BOX_TYPE, $ax.constants.IMAGE_MAP_REGION_TYPE,
+            $ax.constants.VECTOR_SHAPE_TYPE, $ax.constants.VERTICAL_LINE_TYPE, $ax.constants.HORIZONTAL_LINE_TYPE
+        ];
+
+        for(var i = 0; i < action.objectsToRotate.length; i++) {
+            var rotateInfo = action.objectsToRotate[i].rotateInfo;
+            var elementIds = $ax.getElementIdsFromPath(action.objectsToRotate[i].objectPath, eventInfo);
+
+            for(var j = 0; j < elementIds.length; j++) {
+                var elementId = elementIds[j];
+                //calculate degree value
+                var oldTarget = eventInfo.targetElement;
+                eventInfo.targetElement = elementId;
+                var rotateDegree = parseFloat($ax.expr.evaluateExpr(rotateInfo.degree, eventInfo));
+                eventInfo.targetElement = oldTarget;
+                if(!rotateInfo.options.clockwise) rotateDegree = -rotateDegree;
+
+                if($ax.public.fn.IsLayer($obj(elementId).type)) {
+                    var childrenIds = $ax.public.fn.getLayerChildrenDeep(elementId, true);
+                    if(childrenIds.length == 0) continue;
+
+                    var animations = [];
+                    //get center point of the group, and degree delta
+                    var centerPoint, degreeDelta;
+                    animations.push({id: elementId, type: queueTypes.rotate, func: function () {
+                        centerPoint = $ax.public.fn.getBoundingRectForMultipleWidgets(childrenIds).centerPoint;
+                        centerPoint = centerPoint;
+                        var layerDegree = $jobj(elementId).data('layerDegree');
+                        if (layerDegree === undefined) layerDegree = 0;
+                        else layerDegree = parseFloat(layerDegree);
+
+                        var to = rotateInfo.rotateType == 'location';
+                        var newDegree = to ? rotateDegree : layerDegree + rotateDegree;
+                        degreeDelta = newDegree - layerDegree;
+                        degreeDelta = degreeDelta;
+                        $jobj(elementId).data('layerDegree', newDegree);
+                        _fireAnimationFromQueue(elementId, queueTypes.rotate);
+                        $ax.event.raiseSyntheticEvent(elementId, "onRotate");
+                    }});
+
+                    for(var idIndex = 0; idIndex < childrenIds.length; idIndex++) {
+                        var childId = childrenIds[idIndex];
+                        (function (id) {
+                            var rotate = $.inArray($obj(id).type, widgetRotationFilter) != -1;
+                            var isLayer = $ax.public.fn.IsLayer($obj(id).type);
+                            animations.push({
+                                id: id, type: queueTypes.rotate, func: function () {
+                                    if(isLayer) {
+                                        _fireAnimationFromQueue(id, queueTypes.rotate);
+                                        $ax.event.raiseSyntheticEvent(id, "onRotate");
+                                    } else $ax('#' + id).circularMoveAndRotate(degreeDelta, rotateInfo.options, centerPoint.x, centerPoint.y, rotate, false);
+                                }
+                            });
+                            if(!isLayer) animations.push({ id: id, type: queueTypes.move, func: function() {} });
+                        })(childId);
+                    }
+
+                    _addAnimations(animations);
+                } else _queueRotate(rotateDegree, elementId, rotateInfo);
             }
         }
 
         _dispatchAction(eventInfo, actions, index + 1);
     };
 
+    var _queueRotate = function(degreeValue, elementId, rotateInfo) {
+        _addAnimation(elementId, queueTypes.rotate, function () {
+            $ax('#' + elementId).rotate(degreeValue, rotateInfo.options.easing, rotateInfo.options.duration, rotateInfo.rotateType == 'location', true);
+        });
+    };
+
     _actionHandlers.setWidgetSize = function(eventInfo, actions, index) {
         var action = actions[index];
         for(var i = 0; i < action.objectsToResize.length; i++) {
             var resizeInfo = action.objectsToResize[i].sizeInfo;
-            var elementIds = $ax.getElementIdsFromPath(action.objectsToResize[i].objectPath, eventInfo);
+            var objPath = action.objectsToResize[i].objectPath;
+            if(objPath == 'thisItem') {
+                var thisId = eventInfo.srcElement;
+                var repeaterId = $ax.getParentRepeaterFromElementId(thisId);
+                var itemId = $ax.repeater.getItemIdFromElementId(thisId);
+                var currSize = $ax.repeater.getItemSize(repeaterId, itemId);
+                var newSize = _getSizeFromInfo(resizeInfo, eventInfo, currSize.width, currSize.height);
+                $ax.repeater.setItemSize(repeaterId, itemId, newSize.width, newSize.height);
+
+                continue;
+            }
+
+            var elementIds = $ax.getElementIdsFromPath(objPath, eventInfo);
 
             for(var j = 0; j < elementIds.length; j++) {
                 var elementId = elementIds[j];
+                var axObject = $obj(elementId);
+                var moves = resizeInfo.anchor != "top left" || ($ax.public.fn.IsDynamicPanel(axObject.type) &&
+                  ((axObject.fixedHorizontal && axObject.fixedHorizontal == 'center') || (axObject.fixedVertical && axObject.fixedVertical == 'middle')));
 
-                // Need new scope for elementId and info
-                (function(elementId, resizeInfo) {
-                    var oldTarget = eventInfo.targetElement;
-                    eventInfo.targetElement = elementId;
-                    var width = $ax.expr.evaluateExpr(resizeInfo.width, eventInfo);
-                    var height = $ax.expr.evaluateExpr(resizeInfo.height, eventInfo);
-                    eventInfo.targetElement = oldTarget;
-                    // TODO:[bf] Does this merit it's own file? Is there another file it should be refactored out to? Just refactored out to another function?
-                    _addAnimation(elementId, function() {
-                        var query = $jobj(elementId);
+                var animations = [];
+                if($ax.public.fn.IsLayer(axObject.type)) {
+                    moves = true; // Assume widgets will move will layer, even though not all widgets may move
+                    var childrenIds = $ax.public.fn.getLayerChildrenDeep(elementId, true);
+                    if (childrenIds.length === 0) continue;
+                    // Need to wait to calculate new size, until time to animate, but animates are in separate queues
+                    //  best option seems to be to calculate in a "animate" for the layer itself and all children will use that.
+                    //  May just have to be redundant if this doesn't work well.
 
-                        // Get the current width and height
-                        var oldWidth = query.css('width');
-                        oldWidth = Number(oldWidth && oldWidth.substring(0, oldWidth.length - 2));
-                        var oldHeight = query.css('height');
-                        oldHeight = Number(oldHeight && oldHeight.substring(0, oldHeight.length - 2));
+                    var boundingRect, widthChangedPercent, heightChangedPercent, unchanged;
+                    animations.push({id: elementId, type: queueTypes.resize, func: function () {
+                        boundingRect = $ax.public.fn.getBoundingRectForMultipleWidgets(childrenIds);
+                        var size = _getSizeFromInfo(resizeInfo, eventInfo, boundingRect.width, boundingRect.height, elementId);
 
-                        // If either one is not a number, use the old value
-                        width = width != "" ? Number(width) : oldWidth;
-                        height = height != "" ? Number(height) : oldHeight;
+                        widthChangedPercent = (size.width - boundingRect.width) / boundingRect.width;
+                        heightChangedPercent = (size.height - boundingRect.height) / boundingRect.height;
 
-                        width = isNaN(width) ? oldWidth : width;
-                        height = isNaN(height) ? oldHeight : height;
+                        unchanged = widthChangedPercent === 0 && heightChangedPercent === 0;
+                        _fireAnimationFromQueue(elementId, queueTypes.resize);
+                        $ax.event.raiseSyntheticEvent(elementId, 'onResize');
+                    }});
 
-                        // can't be negative
-                        width = Math.max(width, 0);
-                        height = Math.max(height, 0);
-                        if(height == oldHeight && width == oldWidth) {
-                            _fireAnimationFromQueue(elementId);
+                    for (var idIndex = 0; idIndex < childrenIds.length; idIndex++) {
+                        // Need to use scoping trick here to make sure childId doesn't change on next loop
+                        (function(childId) {
+                            //use ax obj to get width and height, jquery css give us the value without border
+                            var isLayer = $ax.public.fn.IsLayer($obj(childId).type);
+                            animations.push({
+                                id: childId,
+                                type: queueTypes.resize,
+                                func: function () {
+                                    if(isLayer) {
+                                        _fireAnimationFromQueue(childId, queueTypes.resize);
+                                        $ax.event.raiseSyntheticEvent(childId, 'onResize');
+                                    } else {
+                                        var css = _getCssForResizingLayerChild(childId, resizeInfo.anchor, boundingRect, widthChangedPercent, heightChangedPercent);
+                                        $ax('#' + childId).resize(css, resizeInfo, true, moves);
+                                    }
+                                }
+                            });
+                            if(!isLayer && moves) animations.push({ id: childId, type: queueTypes.move, func: function() {} });
+                        })(childrenIds[idIndex]);
+                    }
+                } else {
+                    // Not func, obj with func
+                    animations.push({id: elementId, type: queueTypes.resize, func: function () {
+                        var oldWidth, oldHeight;
+                        //textarea can be resized manully by the user, but doesn't update div size yet, so doing this for now.
+                        // alternatively axquery get for size can account for this
+                        if ($ax.public.fn.IsTextArea(axObject.type)) {
+                            var jObject = $jobj(elementId);
+                            var textObj = $ax('#' + jObject.children('textarea').attr('id'));
+                            //maybe we shouldn't use ax obj to get width and height here anymore...
+                            oldWidth = textObj.width();
+                            oldHeight = textObj.height();
+                        } else {
+                            oldWidth = $ax('#' + elementId).width();
+                            oldHeight = $ax('#' + elementId).height();
+                        }
+                        var size = _getSizeFromInfo(resizeInfo, eventInfo, oldHeight, oldWidth, elementId);
+                        var newWidth = size.width;
+                        var newHeight = size.height;
+
+                        if (newHeight == oldHeight && newWidth == oldWidth) {
+                            _fireAnimationFromQueue(elementId, queueTypes.resize);
+                            if(moves) _fireAnimationFromQueue(elementId, queueTypes.move);
                             return;
                         }
 
-                        var css = { width: width, height: height };
-                        var obj = $obj(elementId);
-                        if(obj.percentWidth) css = { height: height };
+                        var css = _getCssForResizingWidget(elementId, resizeInfo.anchor, newWidth, newHeight, oldWidth, oldHeight);
+                        $ax('#' + elementId).resize(css, resizeInfo, true, moves);
+                    }});
+                    // Nop move (move handled by resize)
+                    if(moves) animations.push({id: elementId, type: queueTypes.move, func: function () {}});
+                }
 
-                        // No longer fitToContent, calculate additional styling that needs to be done.
-                        $ax.dynamicPanelManager.setFitToContentCss(elementId, false, oldWidth, oldHeight);
+                _addAnimations(animations);
+            }
+        }
+        _dispatchAction(eventInfo, actions, index + 1);
+    };
 
-                        var easing = resizeInfo.easing || 'none';
-                        var duration = resizeInfo.duration || 0;
+    var _getOldAndNewSize = function (resizeInfo, eventInfo, targetElement) {
+        var axObject = $obj(targetElement);
+        var oldWidth, oldHeight;
+        //textarea can be resized manully by the user, use the textarea child to get the current size
+        //because this new size may not be reflected on its parents yet
+        if ($ax.public.fn.IsTextArea(axObject.type)) {
+            var jObject = $jobj(elementId);
+            var textObj = $ax('#' + jObject.children('textarea').attr('id'));
+            //maybe we shouldn't use ax obj to get width and height here anymore...
+            oldWidth = textObj.width();
+            oldHeight = textObj.height();
+        } else {
+            oldWidth = $ax('#' + elementId).width();
+            oldHeight = $ax('#' + elementId).height();
+        }
 
-                        var stateCss = $ax.deepCopy(css);
-                        // This will move panel if fixed. The callback will make sure resizing ends there.
-                        if((obj.fixedHorizontal && obj.fixedHorizontal == 'center') || (obj.fixedVertical && obj.fixedVertical == 'middle')) {
-                            var loc = $ax.dynamicPanelManager.getFixedPosition(elementId, oldWidth, oldHeight, width, height);
-                            if(loc) {
-                                if(loc[0] != 0 && !$ax.dynamicPanelManager.isPercentWidthPanel(obj)) css['margin-left'] = '+=' + loc[0];
-                                if(loc[1] != 0) css['margin-top'] = '+=' + loc[1];
-                            }
-                        }
+        var size = _getSizeFromInfo(resizeInfo, eventInfo, oldHeight, oldWidth, elementId);
+        return { oldWidth: oldWidth, oldHeight: oldHeight, newWidth: size.width, newHeight: size.height, change: oldWidth != size.width || oldHeight != size.height };
+    }
 
-                        var onComplete = function() {
-                            $ax.flyoutManager.updateFlyout(elementId);
-                            $ax.dynamicPanelManager.fitParentPanel(elementId);
-                            $ax.dynamicPanelManager.updatePanelPercentWidth(elementId);
-                            $ax.dynamicPanelManager.updatePanelContentPercentWidth(elementId);
-                            $ax.event.raiseSyntheticEvent(elementId, 'onResize');
-                            _fireAnimationFromQueue(elementId);
-                        };
+    var _getSizeFromInfo = function(resizeInfo, eventInfo, oldWidth, oldHeight, targetElement) {
+        var oldTarget = eventInfo.targetElement;
+        eventInfo.targetElement = targetElement;
+        var width = $ax.expr.evaluateExpr(resizeInfo.width, eventInfo);
+        var height = $ax.expr.evaluateExpr(resizeInfo.height, eventInfo);
+        eventInfo.targetElement = oldTarget;
 
-                        // This does the resize animation. Moving is handled elsewhere.
-                        if(easing == 'none') {
-                            query.animate(css, 0);
-                            query.children().animate(stateCss, 0);
-                            onComplete();
-                        } else {
-                            query.children().animate(stateCss, duration, easing);
-                            query.animate(css, duration, easing, onComplete);
-                        }
-                    });
-                })(elementId, resizeInfo);
+
+        // If either one is not a number, use the old value
+        width = width != "" ? Number(width) : oldWidth;
+        height = height != "" ? Number(height) : oldHeight;
+
+        width = isNaN(width) ? oldWidth : width;
+        height = isNaN(height) ? oldHeight : height;
+
+        // can't be negative
+        return { width: Math.max(width, 0), height: Math.max(height, 0) };
+    }
+
+    var _queueResize = function (elementId, css, resizeInfo) {
+        var resizeFunc = function() {
+            $ax('#' + elementId).resize(css, resizeInfo, true);
+            //$ax.public.fn.resize(elementId, css, resizeInfo, true);
+        };
+        var obj = $obj(elementId);
+        var moves = resizeInfo.anchor != "top left" || ($ax.public.fn.IsDynamicPanel(obj.type) && ((obj.fixedHorizontal && obj.fixedHorizontal == 'center') || (obj.fixedVertical && obj.fixedVertical == 'middle')))
+        if(!moves) {
+            _addAnimation(elementId, queueTypes.resize, resizeFunc);
+        } else {
+            var animations = [];
+            animations[0] = { id: elementId, type: queueTypes.resize, func: resizeFunc };
+            animations[1] = { id: elementId, type: queueTypes.move, func: function() {}}; // Nop func - resize handles move and firing from queue
+            _addAnimations(animations);
+        }
+    };
+
+    //should clean this function and 
+    var _getCssForResizingWidget = function(elementId, anchor, newWidth, newHeight, oldWidth, oldHeight) {
+        var css = {};
+        css.height = newHeight;
+
+        var obj = $obj(elementId);
+        //if it's 100% width, don't change its width
+        if($ax.dynamicPanelManager.isPercentWidthPanel(obj)) var is100Dp = true;
+        else css.width = newWidth;
+
+        var jobj = $jobj(elementId);
+        //if this is pinned dp, we will mantain the pin, no matter how you resize it; so no need changes left or top
+        //NOTE: currently only pinned DP has position == fixed
+        if(jobj.css('position') == 'fixed') return css;
+
+        //use position relative to parents
+        var position = $ax.public.fn.getPositionRelativeToParent(elementId);
+        var currentLeft = position.left;
+        var currentTop = position.top;
+
+        switch(anchor) {
+            case "top left":
+                break;
+            case "top":
+                css.left = currentLeft - (newWidth - oldWidth) / 2;
+                break;
+            case "top right":
+                css.left = currentLeft + oldWidth - newWidth;
+                break;
+            case "left":
+                css.top = currentTop - (newHeight - oldHeight) / 2;
+                break;
+            case "center":
+                css.left = currentLeft - (newWidth - oldWidth) / 2;
+                css.top = currentTop - (newHeight - oldHeight) / 2;
+                break;
+            case "right":
+                css.top = currentTop - (newHeight - oldHeight) / 2;
+                css.left = currentLeft + oldWidth - newWidth;
+                break;
+            case "bottom left":
+                css.top = currentTop + oldHeight - newHeight;
+                break;
+            case "bottom":
+                css.top = currentTop + oldHeight - newHeight;
+                css.left = currentLeft - (newWidth - oldWidth) / 2;
+                break;
+            case "bottom right":
+                css.top = currentTop + oldHeight - newHeight;
+                css.left = currentLeft + oldWidth - newWidth;
+                break;
+        }
+
+        return css;
+    };
+
+    var _getCssForResizingLayerChild = function (elementId, anchor, layerBoundingRect, widthChangedPercent, heightChangedPercent) {
+        var boundingRect = $ax.public.fn.getWidgetBoundingRect(elementId);
+        var childCenterPoint = boundingRect.centerPoint;
+
+        var childWidth = boundingRect.width;
+        var childHeight = boundingRect.height;
+
+        var newWidth = childWidth + childWidth * widthChangedPercent;
+        var newHeight = childHeight + childHeight * heightChangedPercent;
+
+        var css = {};
+        css.height = newHeight;
+
+        var obj = $obj(elementId);
+        //if it's 100% width, don't change its width and left
+        var changeLeft = true;
+        if($ax.dynamicPanelManager.isPercentWidthPanel(obj)) changeLeft = false;
+        else css.width = newWidth;
+
+
+        var jobj = $jobj(elementId);
+        //if this is pinned dp, we will mantain the pin, no matter how you resize it; so no need changes left or top
+        //NOTE: currently only pinned DP has position == fixed
+        if(jobj.css('position') == 'fixed') return css;
+        //use position relative to parents
+        var position = jobj.position();
+        var currentLeft = position.left;
+        var currentTop = position.top;
+
+        if(anchor.indexOf("center") > -1) {
+            var topDelta = (childCenterPoint.y - layerBoundingRect.centerPoint.y) * heightChangedPercent - childHeight * heightChangedPercent / 2;
+            if(changeLeft) var leftDelta = (childCenterPoint.x - layerBoundingRect.centerPoint.x) * widthChangedPercent - childWidth * widthChangedPercent / 2;
+        } else {
+            if(anchor.indexOf("top") > -1) {
+                topDelta = (currentTop - layerBoundingRect.top) * heightChangedPercent;
+            } else if(anchor.indexOf("bottom") > -1) {
+                topDelta = (currentTop - layerBoundingRect.bottom) * heightChangedPercent;
+            } else {
+                topDelta = (childCenterPoint.y - layerBoundingRect.centerPoint.y) * heightChangedPercent - childHeight * heightChangedPercent / 2;
+            }
+
+            if(changeLeft) {
+                if(anchor.indexOf("left") > -1) {
+                    leftDelta = (currentLeft - layerBoundingRect.left) * widthChangedPercent;
+                } else if(anchor.indexOf("right") > -1) {
+                    leftDelta = (currentLeft - layerBoundingRect.right) * widthChangedPercent;
+                } else {
+                    leftDelta = (childCenterPoint.x - layerBoundingRect.centerPoint.x) * widthChangedPercent - childWidth * widthChangedPercent / 2;
+                }
             }
         }
 
-        _dispatchAction(eventInfo, actions, index + 1);
+        css.top = topDelta + currentTop;
+        if(changeLeft) css.left = leftDelta + currentLeft;
+
+        return css;
     };
 
     _actionHandlers.setPanelOrder = function(eventInfo, actions, index) {
@@ -551,7 +1021,7 @@
             var id = $ax.getElementIdsFromPath(addFilterInfo.path, eventInfo)[0];
             if(_ignoreAction(id)) continue;
 
-            $ax.repeater.addFilter(id, addFilterInfo.label, addFilterInfo.filter, eventInfo.srcElement);
+            $ax.repeater.addFilter(id, addFilterInfo.removeOtherFilters, addFilterInfo.label, addFilterInfo.filter, eventInfo.srcElement);
             _addRefresh(id);
         }
 
@@ -755,6 +1225,18 @@
             var elementIds = $ax.getElementIdsFromPath(action.objectPaths[0], eventInfo);
             if(elementIds.length > 0) {
                 $ax('#' + elementIds[0]).focus();
+                //if select text and not in placeholder mode, then select all text
+                if(action.selectText && !$ax.placeholderManager.isActive(elementIds[0])) {
+                    var elementChildren = document.getElementById(elementIds[0]).children;
+                    //find the input or textarea element
+                    for(var i = 0; i < elementChildren.length; i++) {
+                        if (elementChildren[i].id.indexOf('_input') == -1) continue;
+                        var elementTagName = elementChildren[i].tagName;
+                        if(elementTagName && (elementTagName.toLowerCase() == "input" || elementTagName.toLowerCase() == "textarea")) {
+                            elementChildren[i].select();
+                        }
+                    }
+                }
             }
         }
 
@@ -784,40 +1266,57 @@
         _dispatchAction(eventInfo, actions, index + 1);
     };
 
-    _actionHandlers.raiseEvent = function(eventInfo, actions, index) {
+    _actionHandlers.fireEvents = function(eventInfo, actions, index) {
         var action = actions[index];
         //look for the nearest element id
 
-        if(eventInfo.srcElement) {
-            var objId = eventInfo.srcElement;
-            var obj = $ax.getObjectFromElementId(objId);
-            var rdoId = $ax.getRdoParentFromElementId(objId);
-            var rdo = $ax.getObjectFromElementId(rdoId);
+        var objId = eventInfo.srcElement;
+        var obj = $ax.getObjectFromElementId(objId);
+        var rdoId = obj ? $ax.getRdoParentFromElementId(objId) : "";
+        var rdo = $ax.getObjectFromElementId(rdoId);
+        var page = rdo ? $ax.pageData.masters[rdo.masterId] : $ax.pageData.page;
 
-            // Check if rdo should be this
-            var oldIsMasterEvent = eventInfo.isMasterEvent;
-            if(obj.type == 'referenceDiagramObject' && eventInfo.isMasterEvent) {
-                rdoId = objId;
-                rdo = obj;
-                // It is now an rdo event
+        // Check if rdo should be this
+        var oldIsMasterEvent = eventInfo.isMasterEvent;
+        if (obj && $ax.public.fn.IsReferenceDiagramObject(obj.type) && eventInfo.isMasterEvent) {
+            rdoId = objId;
+            rdo = obj;
+            page = $ax.pageData.masters[rdo.masterId];
+        }
+
+        for(var i = 0; i < action.firedEvents.length; i++) {
+            var firedEvent = action.firedEvents[i];
+            var isPage = firedEvent.objectPath.length == 0;
+            var targetObjIds = isPage ? [rdoId] : $ax.getElementIdsFromPath(firedEvent.objectPath, eventInfo);
+            for (var j = 0; j < targetObjIds.length; j++) {
+                var targetObjId = targetObjIds[j];
+                var targetObj = isPage ? rdo : $ax.getObjectFromElementId(targetObjId);
+
+                eventInfo.srcElement = targetObjId || '';
+
                 eventInfo.isMasterEvent = false;
-            }
-
-            for(var i = 0; i < action.raisedEvents.length; i++) {
-                var raisedEvent = action.raisedEvents[i];
-                var oldRaisedId = eventInfo.raisedId;
-                var event = rdo.interactionMap && rdo.interactionMap && rdo.interactionMap.raised[raisedEvent];
-
-                // raised event will optimize away if it doesn't do anything. Whole interaction map may be optimized away as well.
-                if(event) {
-                    var oldSrc = eventInfo.srcElement;
-                    eventInfo.srcElement = rdoId;
-                    eventInfo.raisedId = rdoId;
-                    $ax.event.handleEvent(rdoId, eventInfo, event, false, true);
-                    eventInfo.raisedId = oldRaisedId;
-                    eventInfo.srcElement = oldSrc;
+                var raisedEvents = firedEvent.raisedEventIds;
+                if(raisedEvents) {
+                    for(var k = 0; k < raisedEvents.length; k++) {
+                        var event = targetObj.interactionMap && targetObj.interactionMap.raised && targetObj.interactionMap.raised[raisedEvents[k]];
+                        if(event) $ax.event.handleEvent(targetObjId, eventInfo, event, false, true);
+                    }
                 }
+
+                if(isPage) eventInfo.isMasterEvent = true;
+
+                var firedTarget = isPage ? page : targetObj;
+                var firedEventNames = firedEvent.firedEventNames;
+                if(firedEventNames) {
+                    for(k = 0; k < firedEventNames.length; k++) {
+                        event = firedTarget.interactionMap && firedTarget.interactionMap[firedEventNames[k]];
+                        if(event) $ax.event.handleEvent(isPage ? '' : targetObjId, eventInfo, event, false, true);
+                    }
+                }
+                if(isPage) eventInfo.isMasterEvent = oldIsMasterEvent;
             }
+            eventInfo.srcElement = objId;
+
             eventInfo.isMasterEvent = oldIsMasterEvent;
         }
 

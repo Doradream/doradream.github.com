@@ -256,8 +256,14 @@
             }
         } else if(message == 'adaptiveViewChange') {
             $('.adaptiveViewOption').removeClass('currentAdaptiveView');
-            if(data) $('div[val="' + data + '"]').addClass('currentAdaptiveView');
+            if(data.viewId) {$('div[val="' + data.viewId + '"]').addClass('currentAdaptiveView');}
             else $('div[val="default"]').addClass('currentAdaptiveView');
+
+            //when we set adaptive view through user event, we want to update the checkmark on sitemap
+            if(data.forceSwitchTo) {
+                $('.checkedAdaptive').removeClass('checkedAdaptive');
+                $('div[val="' + data.forceSwitchTo + '"]').find('.adaptiveCheckboxDiv').addClass('checkedAdaptive');
+            }
         }
     });
 
