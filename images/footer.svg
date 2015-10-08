@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="1366px" height="164px" viewBox="0 0 1366 164" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:sketch="http://www.bohemiancoding.com/sketch/ns">
+    <!-- Generator: Sketch 3.3.3 (12072) - http://www.bohemiancoding.com/sketch -->
+    <title>Rectangle 32</title>
+    <desc>Created with Sketch.</desc>
+    <defs></defs>
+    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd" sketch:type="MSPage">
+        <g id="A4-Copy" sketch:type="MSArtboardGroup" transform="translate(-533.000000, -943.000000)">
+            <rect id="Rectangle-32" fill="#EEEEEE" sketch:type="MSShapeGroup" x="533" y="942" width="1366" height="165"></rect>
+            <polygon id="Triangle-3" fill="#30D5CE" sketch:type="MSShapeGroup" transform="translate(1216.000000, 1022.000000) scale(1, -1) translate(-1216.000000, -1022.000000) " points="1216 942 1967 1102 465 1102 "></polygon>
+        </g>
+    </g>
+</svg>
