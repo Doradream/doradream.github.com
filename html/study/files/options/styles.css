@@ -12,24 +12,24 @@
   position:absolute;
   z-index:0;
 }
-#u6_img {
+#u8_img {
   position:absolute;
   left:0px;
   top:0px;
   width:1200px;
-  height:2400px;
+  height:1558px;
 }
-#u6 {
+#u8 {
   position:absolute;
   left:0px;
   top:0px;
   width:1200px;
-  height:2400px;
+  height:1558px;
 }
-#u7 {
+#u9 {
   position:absolute;
   left:2px;
-  top:1192px;
+  top:771px;
   width:1196px;
   visibility:hidden;
   word-wrap:break-word;
