@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="252px" height="22px" viewBox="0 0 252 22" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:sketch="http://www.bohemiancoding.com/sketch/ns">
+    <!-- Generator: Sketch 3.3.3 (12072) - http://www.bohemiancoding.com/sketch -->
+    <title>iconfont-duihuakuang + Line + Line Copy</title>
+    <desc>Created with Sketch.</desc>
+    <defs></defs>
+    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd" sketch:type="MSPage">
+        <g id="A4" sketch:type="MSArtboardGroup" transform="translate(-321.000000, -728.000000)">
+            <g id="iconfont-duihuakuang-+-Line-+-Line-Copy" sketch:type="MSLayerGroup" transform="translate(321.000000, 728.000000)">
+                <path d="M0.5,11.5 L84.5,11.5" id="Line" stroke="#FFFFFF" stroke-linecap="square" sketch:type="MSShapeGroup"></path>
+                <path d="M167.5,11.5 L251.5,11.5" id="Line-Copy" stroke="#FFFFFF" stroke-linecap="square" sketch:type="MSShapeGroup"></path>
+                <g id="iconfont-xiaoxi" transform="translate(115.000000, 0.000000)" fill="#FFFFFF" sketch:type="MSShapeGroup">
+                    <path d="M10.5272589,21.5434783 C4.71628105,21.5434783 0.00548004799,17.4216961 0.00548004799,12.3370359 C0.00548004799,9.4311301 1.54776847,6.8437352 3.95113223,5.15644529 L3.95113223,0.5 L8.56056719,3.2969959 C9.1984625,3.19138147 9.85442346,3.13055392 10.5272986,3.13055392 C16.3382765,3.13055392 21.0490377,7.25237573 21.0490377,12.3370359 C21.0490377,17.4216961 16.338197,21.5434783 10.5272589,21.5434783 L10.5272589,21.5434783 Z" id="Shape" transform="translate(10.527259, 11.021739) scale(1, -1) translate(-10.527259, -11.021739) "></path>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>
