@@ -15,7 +15,7 @@
    ========================================================================== */
 body {
   background-color: #fff;
-  font-family: 'Open Sans', sans-serif;
+  font-family: Adelle Sans, sans-serif !important;
   color: #fff;
   font-size: 14px;
   line-height: 20px;
@@ -24,7 +24,7 @@ body {
 h1 {
   margin-top: 0px;
   margin-bottom: 10px;
-  font-family: Lato, sans-serif;
+  font-family: Adelle Sans, sans-serif;
   font-size: 38px;
   line-height: 44px;
   font-weight: 700;
@@ -33,7 +33,7 @@ h1 {
 h2 {
   margin-top: 20px;
   margin-bottom: 10px;
-  font-family: Lato, sans-serif;
+  font-family: Adelle Sans, sans-serif;
   font-size: 32px;
   line-height: 36px;
   font-weight: 700;
@@ -42,7 +42,7 @@ h2 {
 h3 {
   margin-top: 20px;
   margin-bottom: 10px;
-  font-family: Lato, sans-serif;
+  font-family: Adelle Sans, sans-serif;
   font-size: 24px;
   line-height: 30px;
   font-weight: 700;
@@ -51,7 +51,7 @@ h3 {
 h4 {
   margin-top: 10px;
   margin-bottom: 10px;
-  font-family: Lato, sans-serif;
+  font-family: Adelle Sans, sans-serif;
   font-size: 18px;
   line-height: 24px;
   font-weight: 700;
@@ -60,7 +60,7 @@ h4 {
 h5 {
   margin-top: 10px;
   margin-bottom: 10px;
-  font-family: Lato, sans-serif;
+  font-family: Adelle Sans, sans-serif;
   font-size: 14px;
   line-height: 20px;
   font-weight: 700;
@@ -69,7 +69,7 @@ h5 {
 h6 {
   margin-top: 10px;
   margin-bottom: 10px;
-  font-family: Lato, sans-serif;
+  font-family: Adelle Sans, sans-serif;
   font-size: 12px;
   line-height: 18px;
   font-weight: 700;
@@ -79,7 +79,7 @@ h6 {
 p {
   display: block;
   margin-bottom: 16px;
-  font-family: Lato, sans-serif;
+  font-family: Adelle Sans, sans-serif;
   color: #222;
   line-height: 24px;
   font-weight: 300;
@@ -105,7 +105,7 @@ img {
 
   margin-bottom: 0px;
   background-color: #fff;
-  background-position: 50% 98%;
+  background-position: 50% 80%;
   background-size: 472px;
   background-repeat: no-repeat;
   background-attachment: scroll;
@@ -173,7 +173,7 @@ img {
 .nav-link {
   -webkit-transition: color 200ms ease;
   transition: color 200ms ease;
-  font-family: Lato, sans-serif;
+  font-family: Adelle Sans, sans-serif;
   color: #999;
   font-size: 11px;
   line-height: 17px;
@@ -193,7 +193,7 @@ img {
 .logo {
   margin-top: 0px;
   padding: 15px;
-  font-family: Lato, sans-serif;
+  font-family: Adelle Sans, sans-serif;
   color: #fff;
   font-size: 24px;
   line-height: 30px;
@@ -220,7 +220,7 @@ img {
   background-color: transparent;
   -webkit-transition: all 200ms ease;
   transition: all 200ms ease;
-  font-family: Lato, sans-serif;
+  font-family: Adelle Sans, sans-serif;
   color: #00d6b4;
   font-size: 13px;
   line-height: 19px;
@@ -717,26 +717,7 @@ img {
   text-align: left;
 }
 
-.pj-h3{
-	margin-top: 35px;
-  margin-bottom: 0px;
-  color: #444;
-  font-size: 18px;
-  line-height: 30px;
-  font-weight: 500;
-  text-align: left;
 
-}
-
-.st{
-	margin-top: 5px;
-  margin-bottom: 15px;
-  color: #888;
-  font-size: 14px;
-  line-height: 26px;
-  font-weight: 300;
-  text-align: center;
-}
 
 .pj1-texthead {
   display: block;
@@ -948,12 +929,7 @@ img {
   list-style-type: none;
 }
 
-.pj1-title {
-  margin-top: 20px;
-  font-family: Lato, sans-serif;
-  color: #222;
-  letter-spacing: 2px;
-}
+
 
 .pj1-image-journeymap {
   display: block;
@@ -2252,16 +2228,56 @@ img {
 }
 
 
+
+
+
+
 .date{
 	text-align: center;
 }
 
-   .pj1-p-normal {
+.pj1-p-normal {
     margin: 20px 10px;
     padding-top: 0px;
     padding-bottom: 0px;
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 320;
     text-align: justify;
     letter-spacing: 0.2px;
   }
+
+
+.pj-h3{
+	margin-top: 35px;
+  margin-bottom: 0px;
+  color: #444;
+  font-size: 18px;
+  line-height: 30px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.st{
+	margin-top: 5px;
+  margin-bottom: 15px;
+  color: #888;
+  font-size: 14px;
+  line-height: 26px;
+  font-weight: 300;
+  text-align: center;
+}
+
+.pj1-title {
+  margin-top: 40px;
+  font-family: Lato, sans-serif;
+  color: #222;
+  letter-spacing: 2px;
+}
+
+
+
+
+
+
+
+
