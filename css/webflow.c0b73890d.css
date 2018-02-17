@@ -2393,6 +2393,7 @@ margin-top: 35px;
     text-align: center;
 }
 
+<<<<<<< HEAD
 @media (max-width: 1200px) {
 
   .hero.about-page {
@@ -2497,3 +2498,16 @@ margin-top: 35px;
 	float: right;
 }
 
+=======
+.block_orange{
+	float: left;width:15px;height:25px;background-color:#FCBA54;margin-top:23px;margin-right:10px;
+}
+
+.backgroud_orange{
+	background:#FCBA54;width: auto; display: inline-block;
+}
+
+.white_font{
+	font-size: 16px;color:white;padding-bottom: 2px;display: block;padding-top: 2px;padding-left: 15px;padding-right: 15px;
+}
+>>>>>>> 0ee7ee8b3d7c342b001facade4cb10b874b5835b
