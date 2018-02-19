@@ -2383,7 +2383,11 @@ ul {
 .hp-pj{
 margin-left:30px;
 margin-right:30px;
-padding: 50px 0px;
+
+}
+
+.hp-row{
+	padding: 40px 0px;
 }
 
 .hp-pj1{
@@ -2400,11 +2404,11 @@ float: right
     letter-spacing: 1px;
     color: #333;
     line-height: 1.5;
-    margin-bottom: 20px;
+
 }
 
 .hp-p{
-  margin-top: 32px;
+  margin-top: 28px;
   margin-bottom: 32px;
     padding-top: 0px;
     padding-bottom: 0px;
@@ -2526,5 +2530,5 @@ margin-top: 35px;
 .hp-img-head{
 	display: inline-block; 
 	opacity: 1; 
-	padding-bottom:10px;
+	padding-bottom:16px;
 }
