@@ -2408,29 +2408,28 @@ float: right
 }
 
 .hp-p{
-  margin-top: 28px;
+  margin-top: 16px;
   margin-bottom: 32px;
     padding-top: 0px;
     padding-bottom: 0px;
     color: #666;
     font-weight: 300;
-    letter-spacing: 1px;
+    letter-spacing: 0.8px;
     line-height: 1.5;
     font-size: 14px;
-    line-height: 24px;
     text-align: justify;
 }
 
 .hp-tag{
-	font-family: Georgia,Times,Times New Roman,serif;
-    font-size: 16px;
-    font-weight: 400;
-    /*font-style: italic;*/
+
+    font-size: 14px;
+    font-weight: 300;
+    font-style: italic;
     font-stretch: normal;
-    line-height: 1.5;
+    line-height: 1;
     letter-spacing: 0;
     text-align: justify;
-    color: #79baa9;
+    color: #70A799;
     margin-bottom: 12px;
 }
 
@@ -2518,7 +2517,9 @@ margin-top: 35px;
 }
 
 .backgroud_orange{
-	background:#FCBA54;width: auto; display: inline-block;
+	background:#FCBA54;
+	width: auto; 
+	display: inline-block;
 }
 
 .white_font{
@@ -2531,4 +2532,20 @@ margin-top: 35px;
 	display: inline-block; 
 	opacity: 1; 
 	padding-bottom:16px;
+}
+
+.hp-point{
+	border-left: 2px solid #ddd;
+	padding-left: 12px;
+}
+
+.hp-ul{
+  padding-bottom: 0px;
+  padding-left: 20px;
+  color: #eee;
+}
+
+.hp-line{
+	border-left: 1px solid #eee;
+	padding-left: 10px;
 }
