@@ -1112,6 +1112,8 @@ img {
 .home-head1 {
   margin-top: 63px;
   margin-bottom: 63px;
+  margin-left: 20%;
+  margin-right: 20%;
   color: #222;
   font-weight: 300;
   text-align: center;
@@ -2290,10 +2292,6 @@ img {
 }
 
 
-
-
-
-
 .date{
 	text-align: center;
 }
@@ -2487,16 +2485,19 @@ margin-top: 35px;
 
 
 .hp-s{
-	  margin-top: 20px;
+
+  margin-top: 20px;
   margin-bottom: 20px;
-    padding-top: 0px;
-    padding-bottom: 0px;
+margin-left: 13%;
     color: #777;
-    font-size: 18px;
-    font-weight: 300;
-    text-align: justify;
-    letter-spacing: 0.2px;
-    text-align: center;
+    font-size: 17px;
+    font-weight: 280;
+    letter-spacing: 0.1px;
+line-height: 1.7;
+
+width: 74%;
+    
+    
 }
 
 
@@ -2548,4 +2549,9 @@ margin-top: 35px;
 .hp-line{
 	border-left: 1px solid #eee;
 	padding-left: 10px;
+}
+
+.head{
+	position: relative;
+	float: left;
 }
